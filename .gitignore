@@ -20,5 +20,5 @@ enhanced_resized_face.jpg
 .DS_Store
 Thumbs.db
 
-# Model artifacts
-*.h5
+# Model artifacts (handled via Git LFS)
+# (left intentionally blank to allow LFS tracking of .h5 files)
