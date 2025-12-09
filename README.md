@@ -59,7 +59,7 @@ The typical workflow is:
 ## Model artifacts
 
 - The repository ships with the original Keras checkpoints (`Gender-age.h5`, `mood.h5`) tracked via Git LFS for reproducibility.
-- At runtime we now load **TensorFlow Lite** versions (`models/age_gender.tflite`, `models/mood.tflite`) through the Lite Runtime (`ai-edge-litert` on Linux or full `tensorflow` as the Windows fallback). This keeps memory usage low enough for free-tier hosts.
+- At runtime we now load **TensorFlow Lite** versions (`models/age_gender.tflite`, `models/mood.tflite`) through TensorFlow's built-in Lite interpreter (`tensorflow-cpu`). This keeps inference lightweight while remaining compatible across hosts.
 - If you retrain the models, regenerate the TFLite artifacts once using the helper script:
    ```bash
    python convert_models.py
@@ -68,8 +68,8 @@ The typical workflow is:
 
 ## Deployment notes
 
-- Free hosts such as Render require HTTPS for webcam access. Set the Python version to **3.10** (the repo includes `runtime.txt`) so prebuilt Lite Runtime wheels (`ai-edge-litert`) are available.
-- Linux deployments install `ai-edge-litert` automatically via `requirements.txt`. On Windows, pip falls back to `tensorflow-cpu`, so local development can still execute the conversion script and inference path.
+- Free hosts such as Render require HTTPS for webcam access. Set the Python version to **3.10** (the repo includes `runtime.txt`) so prebuilt `tensorflow-cpu` wheels are available.
+- Both Linux hosts (Render) and Windows development environments install `tensorflow-cpu==2.20.0`, which exposes the same TF Lite interpreter used for inference and model conversion.
 
 ## Datasets
 

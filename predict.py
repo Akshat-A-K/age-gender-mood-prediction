@@ -2,13 +2,15 @@ import cv2
 import numpy as np
 from pathlib import Path
 
-try:  # Prefer the LiteRT runtime on Linux hosts.
-    from ai_edge_litert.interpreter import Interpreter  # type: ignore
-except ImportError:
-    try:  # Fallback to the legacy tflite-runtime wheel.
+try:  # Use TensorFlow's bundled Lite interpreter when available.
+    from tensorflow.lite.python.interpreter import Interpreter  # type: ignore
+except ImportError:  # pragma: no cover - fallback when tensorflow isn't installed.
+    try:
         from tflite_runtime.interpreter import Interpreter  # type: ignore
-    except ImportError:  # pragma: no cover - Windows dev fallback.
-        from tensorflow.lite.python.interpreter import Interpreter  # type: ignore
+    except ImportError as exc:  # pragma: no cover - surface clearer guidance.
+        raise ImportError(
+            "No TensorFlow Lite interpreter found. Install tensorflow-cpu or tflite-runtime."
+        ) from exc
 
 
 BASE_DIR = Path(__file__).resolve().parent
