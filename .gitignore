@@ -15,10 +15,8 @@ captured_image.jpg
 cropped_face.jpg
 resized_face.jpg
 enhanced_resized_face.jpg
+uploads/
 
 # Operating system files
 .DS_Store
 Thumbs.db
-
-# Model artifacts (handled via Git LFS)
-# (left intentionally blank to allow LFS tracking of .h5 files)
