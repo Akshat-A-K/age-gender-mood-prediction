@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Face Insight Studio</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+</head>
+<body data-theme="noir">
+    <main class="shell">
+        <section class="panel stage">
+            <div class="stage-headline">
+                <div>
+                    <p class="eyebrow">Realtime Face Intelligence</p>
+                    <h1>Face Insight Studio</h1>
+                    <p class="lede">
+                        Mirror your live feed, snap the most centered frame, or drop a photo. Our CNN stack handles
+                        preprocessing, age/gender classification, and FER mood detection end-to-end.
+                    </p>
+                </div>
+                <div class="stage-actions">
+                    <button class="theme-toggle" type="button" id="theme-toggle" aria-label="Toggle theme">Noir</button>
+                    <div class="live-pill" id="live-pill">
+                        <span class="dot"></span>
+                        <span class="pill-text">Camera idle</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="video-shell">
+                <video id="camera-stream" autoplay playsinline muted></video>
+                <img id="snapshot-preview" alt="Snapshot preview" />
+                <canvas id="bbox-layer"></canvas>
+                <div class="video-overlay" id="video-overlay">
+                    <p>Awaiting camera permissions</p>
+                    <small>Allow access to stream live preview.</small>
+                </div>
+                <div class="target-guide">
+                    <span>Center face within guide</span>
+                </div>
+            </div>
+
+            <div class="stage-footer">
+                <div>
+                    <p class="status-label">Capture Flow</p>
+                    <p class="status-hint">Video runs continuously; snapshot saves to analyzer.</p>
+                </div>
+                <div class="camera-actions">
+                    <button class="ghost" type="button" id="camera-toggle">Enable Camera</button>
+                    <button class="capture" type="button" id="snapshot-btn" disabled>Capture Snapshot</button>
+                </div>
+            </div>
+        </section>
+
+        <div class="side-stack">
+            <form class="panel upload" method="POST" enctype="multipart/form-data">
+                <label class="dropzone" for="image">
+                    <input id="image" type="file" name="image" accept="image/png,image/jpeg,image/jpg,image/bmp" />
+                    <span class="hint">Drag & drop or<span>browse files</span></span>
+                    <small>PNG/JPG/BMP · up to 4MB</small>
+                </label>
+
+                <p class="upload-note">
+                    Camera snapshots save automatically on capture. Manual uploads override any existing snapshot.
+                </p>
+
+                <label class="privacy-toggle" for="ephemeral">
+                    <input id="ephemeral" type="checkbox" name="ephemeral" {% if privacy_opt_out %}checked{% endif %} />
+                    <span class="privacy-label">Do not persist captures</span>
+                    <small>Skips writing snapshots to disk and removes them from the session log preview.</small>
+                </label>
+
+                <input type="hidden" name="capture_data" id="capture-data" />
+                <button type="submit">Analyze Face</button>
+
+                {% with messages = get_flashed_messages() %}
+                    {% if messages %}
+                        <div class="alerts">
+                            {% for message in messages %}
+                                <p>{{ message }}</p>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                {% endwith %}
+            </form>
+
+            <section class="panel results">
+            {% if prediction %}
+                <div class="preview">
+                    {% if image_url %}
+                        <img src="{{ image_url }}" alt="Uploaded face" />
+                    {% elif inline_preview %}
+                        <img src="{{ inline_preview }}" alt="Inline face" />
+                    {% else %}
+                        <div class="placeholder">Image preview unavailable</div>
+                    {% endif %}
+                </div>
+                <div class="metrics">
+                    <article class="metric">
+                        <p class="label">Age Group</p>
+                        <p class="value">{{ prediction.age }}</p>
+                    </article>
+                    <article class="metric">
+                        <p class="label">Gender</p>
+                        <p class="value">{{ prediction.gender }}</p>
+                    </article>
+                    <article class="metric">
+                        <p class="label">Mood</p>
+                        <p class="value">{{ prediction.mood }}</p>
+                    </article>
+                </div>
+            {% else %}
+                <div class="empty">
+                    <p>No predictions yet.</p>
+                    <p class="muted">Upload a face photo to unlock instant age, gender, and mood insights.</p>
+                </div>
+            {% endif %}
+            </section>
+
+            <section class="panel log">
+                <div class="log-head">
+                    <div>
+                        <p class="label">Session Log</p>
+                        <h2>Recent Analyses</h2>
+                    </div>
+                    <div class="log-controls">
+                        <span class="badge">{{ history|length }}</span>
+                        <form action="{{ url_for('clear_session') }}" method="POST">
+                            <button class="ghost danger" type="submit">Clear Session</button>
+                        </form>
+                    </div>
+                </div>
+                {% if history %}
+                    <ul class="log-list">
+                        {% for entry in history %}
+                            <li class="log-entry">
+                                {% if entry.image_url %}
+                                    <img src="{{ entry.image_url }}" alt="Session frame" />
+                                {% else %}
+                                    <div class="log-placeholder">No image saved</div>
+                                {% endif %}
+                                <div>
+                                    <p class="entry-time">{{ entry.captured_at }}</p>
+                                    <p class="entry-values">{{ entry.age }} · {{ entry.gender }} · {{ entry.mood }}</p>
+                                </div>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="log-empty">No captures in this session yet.</p>
+                {% endif %}
+            </section>
+        </div>
+    </main>
+
+    <footer>
+        <small>Made by <a href="https://akshat-a-k.github.io/My-Portfolio" target="_blank" rel="noopener noreferrer">Akshat Kotadia</a> from <a href="https://github.com/Akshat-A-K/age-gender-mood-prediction" target="_blank" rel="noopener noreferrer">this repository</a></small>
+    </footer>
+
+    <script>
+        (function () {
+            const cameraToggle = document.getElementById('camera-toggle');
+            const captureBtn = document.getElementById('snapshot-btn');
+            const video = document.getElementById('camera-stream');
+            const preview = document.getElementById('snapshot-preview');
+            const captureInput = document.getElementById('capture-data');
+            const fileInput = document.getElementById('image');
+            const livePill = document.getElementById('live-pill');
+            const liveText = livePill?.querySelector('.pill-text');
+            const themeToggle = document.getElementById('theme-toggle');
+            const bboxLayer = document.getElementById('bbox-layer');
+            const targetGuide = document.querySelector('.target-guide');
+            const feedbackPanel = document.getElementById('feedback-panel');
+            const canvas = document.createElement('canvas');
+            const CAPTURE_SIZE = 320;
+            const overlay = document.getElementById('video-overlay');
+            const overlayMessage = overlay?.querySelector('p');
+            const overlayHint = overlay?.querySelector('small');
+            let detector = null;
+            let bboxContext = null;
+            let detectHandle = null;
+
+            let stream = null;
+
+            function supportsCamera() {
+                return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+            }
+
+            function setLiveState(isLive) {
+                if (!livePill || !liveText) return;
+                livePill.classList.toggle('is-live', isLive);
+                liveText.textContent = isLive ? 'Live feed on' : 'Camera idle';
+            }
+
+            function showOverlay(message, hint) {
+                if (!overlay) return;
+                if (!message) {
+                    overlay.classList.add('is-hidden');
+                    return;
+                }
+                overlay.classList.remove('is-hidden');
+                if (overlayMessage) overlayMessage.textContent = message;
+                if (overlayHint) overlayHint.textContent = hint || '';
+            }
+
+            async function enableCamera(autoStart = false) {
+                if (!supportsCamera()) {
+                    showOverlay('Camera unsupported', 'Try Chrome/Edge over HTTPS.');
+                    return;
+                }
+                if (stream) {
+                    cameraToggle.textContent = 'Disable Camera';
+                    captureBtn.disabled = false;
+                    return;
+                }
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: 'user',
+                            width: { ideal: 640 },
+                            height: { ideal: 480 },
+                        },
+                        audio: false,
+                    });
+                    video.srcObject = stream;
+                    await video.play();
+                    video.classList.add('is-visible');
+                    preview.classList.remove('is-visible');
+                    captureBtn.disabled = false;
+                    cameraToggle.textContent = 'Disable Camera';
+                    setLiveState(true);
+                    showOverlay(null);
+                    startDetectionLoop();
+                } catch (err) {
+                    setLiveState(false);
+                    cameraToggle.textContent = 'Enable Camera';
+                    showOverlay('Unable to access camera', err.message || 'Check permissions and retry.');
+                    if (!autoStart) {
+                        alert('Unable to access camera: ' + err.message);
+                    }
+                }
+            }
+
+            function disableCamera(message = 'Camera paused', hint = 'Enable camera to preview again.') {
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                    stream = null;
+                }
+                video.srcObject = null;
+                video.classList.remove('is-visible');
+                captureBtn.disabled = true;
+                cameraToggle.textContent = 'Enable Camera';
+                setLiveState(false);
+                showOverlay(message, hint);
+                stopDetectionLoop();
+            }
+
+            cameraToggle?.addEventListener('click', () => {
+                if (stream) {
+                    disableCamera();
+                } else {
+                    enableCamera();
+                }
+            });
+
+            captureBtn?.addEventListener('click', () => {
+                if (!stream) {
+                    return;
+                }
+                const width = video.videoWidth || CAPTURE_SIZE;
+                const height = video.videoHeight || CAPTURE_SIZE;
+                const square = Math.min(width, height);
+                const sx = (width - square) / 2;
+                const sy = (height - square) / 2;
+
+                canvas.width = CAPTURE_SIZE;
+                canvas.height = CAPTURE_SIZE;
+                const context = canvas.getContext('2d');
+                context.save();
+                context.translate(CAPTURE_SIZE, 0);
+                context.scale(-1, 1);
+                context.drawImage(video, sx, sy, square, square, 0, 0, CAPTURE_SIZE, CAPTURE_SIZE);
+                context.restore();
+
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+                captureInput.value = dataUrl;
+                fileInput.value = '';
+                preview.src = dataUrl;
+                preview.classList.add('is-visible');
+            });
+
+            fileInput?.addEventListener('change', () => {
+                captureInput.value = '';
+                preview.classList.remove('is-visible');
+            });
+
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    disableCamera('Camera paused', 'Return to the tab to re-enable.');
+                }
+            });
+
+            window.addEventListener('resize', () => {
+                if (!bboxLayer) return;
+                bboxLayer.width = video.clientWidth;
+                bboxLayer.height = video.clientHeight;
+            });
+
+            if (supportsCamera()) {
+                cameraToggle.textContent = 'Checking Camera...';
+                enableCamera(true);
+            } else {
+                cameraToggle.textContent = 'Camera Unsupported';
+                captureBtn.disabled = true;
+                showOverlay('Camera unsupported', 'Use a device with media capture.');
+            }
+
+            // Theme handling
+            const THEMES = ['noir', 'aurora'];
+            function applyTheme(theme) {
+                document.body.setAttribute('data-theme', theme);
+                themeToggle.textContent = theme === 'noir' ? 'Light Mode' : 'Dark Mode';
+                localStorage.setItem('fis-theme', theme);
+            }
+            const savedTheme = localStorage.getItem('fis-theme');
+            if (savedTheme && THEMES.includes(savedTheme)) {
+                applyTheme(savedTheme);
+            }
+            themeToggle?.addEventListener('click', () => {
+                const current = document.body.getAttribute('data-theme') || 'noir';
+                const next = current === THEMES[0] ? THEMES[1] : THEMES[0];
+                applyTheme(next);
+            });
+
+            // Bounding box detection (FaceDetector API)
+            async function ensureDetector() {
+                if (!('FaceDetector' in window)) {
+                    return null;
+                }
+                if (!detector) {
+                    detector = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+                }
+                return detector;
+            }
+
+            function toggleGuide(show = true) {
+                targetGuide?.classList.toggle('is-hidden', !show);
+            }
+
+            function startDetectionLoop() {
+                if (!bboxLayer) {
+                    return;
+                }
+                bboxLayer.width = video.clientWidth;
+                bboxLayer.height = video.clientHeight;
+                bboxContext = bboxLayer.getContext('2d');
+                if (!('FaceDetector' in window)) {
+                    bboxLayer.classList.add('is-disabled');
+                    toggleGuide(true);
+                    return;
+                }
+                bboxLayer.classList.remove('is-disabled');
+                toggleGuide(false);
+
+                const loop = async () => {
+                    if (!stream || document.hidden) {
+                        return;
+                    }
+                    const detectorInstance = await ensureDetector();
+                    if (!detectorInstance) {
+                        return;
+                    }
+                    try {
+                        const faces = await detectorInstance.detect(video);
+                        drawBoxes(faces);
+                    } catch (err) {
+                        console.warn('Face detection failed', err);
+                        stopDetectionLoop();
+                        return;
+                    }
+                    detectHandle = requestAnimationFrame(loop);
+                };
+                detectHandle = requestAnimationFrame(loop);
+            }
+
+            function drawBoxes(faces = []) {
+                if (!bboxContext || !bboxLayer) {
+                    return;
+                }
+                bboxContext.clearRect(0, 0, bboxLayer.width, bboxLayer.height);
+                faces.forEach(face => {
+                    const { width, height, top, left } = face.boundingBox;
+                    bboxContext.strokeStyle = '#ffb347';
+                    bboxContext.lineWidth = 2;
+                    bboxContext.strokeRect(left, top, width, height);
+                });
+                if (!faces.length) {
+                    bboxContext.strokeStyle = 'rgba(255,255,255,0.25)';
+                    const guideSize = Math.min(bboxLayer.width, bboxLayer.height) * 0.6;
+                    bboxContext.strokeRect((bboxLayer.width - guideSize) / 2, (bboxLayer.height - guideSize) / 2, guideSize, guideSize);
+                }
+            }
+
+            function stopDetectionLoop() {
+                if (detectHandle) {
+                    cancelAnimationFrame(detectHandle);
+                    detectHandle = null;
+                }
+                if (bboxContext) {
+                    bboxContext.clearRect(0, 0, bboxLayer.width, bboxLayer.height);
+                }
+                toggleGuide(true);
+            }
+
+            // Capture feedback state on submit
+            const form = document.querySelector('form.upload');
+            form?.addEventListener('submit', () => {
+                feedbackPanel?.setAttribute('data-state', 'pending');
+            });
+        })();
+    </script>
+</body>
+</html>
