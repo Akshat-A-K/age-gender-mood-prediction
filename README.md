@@ -56,6 +56,21 @@ The typical workflow is:
      - Use the **Clear Session** button to delete the current history and wipe the `uploads/` directory. This is useful for demos or if you enabled persistence temporarily and want to remove artifacts afterward.
    - Theme toggle (Noir/Aurora) lets you switch between dark and light UI palettes without restarting the server.
 
+## Model artifacts
+
+- The repository ships with the original Keras checkpoints (`Gender-age.h5`, `mood.h5`) tracked via Git LFS for reproducibility.
+- At runtime we now load **TensorFlow Lite** versions (`models/age_gender.tflite`, `models/mood.tflite`) through `tflite-runtime` (or `tensorflow` as a Windows fallback). This keeps memory usage low enough for free-tier hosts.
+- If you retrain the models, regenerate the TFLite artifacts once using the helper script:
+   ```bash
+   python convert_models.py
+   ```
+   The script writes optimized `.tflite` files into `./models/` so the web app can consume them.
+
+## Deployment notes
+
+- Free hosts such as Render require HTTPS for webcam access. Set the Python version to **3.10** (the repo includes `runtime.txt`) so prebuilt `tflite-runtime` wheels are available.
+- Linux deployments install `tflite-runtime` automatically via `requirements.txt`. On Windows, pip falls back to `tensorflow-cpu`, so local development can still execute the conversion script and inference path.
+
 ## Datasets
 
 - Age and gender: https://www.kaggle.com/datasets/jangedoo/utkface-new

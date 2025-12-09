@@ -1,14 +1,36 @@
 import cv2
 import numpy as np
-from keras.models import load_model
+from pathlib import Path
+
+try:  # Prefer lightweight runtime in production.
+    from tflite_runtime.interpreter import Interpreter
+except ImportError:  # pragma: no cover - Windows dev fallback.
+    from tensorflow.lite.python.interpreter import Interpreter  # type: ignore
 
 
-AGE_GENDER_MODEL_PATH = 'Gender-age.h5'
-MOOD_MODEL_PATH = 'mood.h5'
+BASE_DIR = Path(__file__).resolve().parent
+AGE_GENDER_MODEL_PATH = BASE_DIR / 'models' / 'age_gender.tflite'
+MOOD_MODEL_PATH = BASE_DIR / 'models' / 'mood.tflite'
 
 
-age_gender_model = load_model(AGE_GENDER_MODEL_PATH, compile=False)
-mood_model = load_model(MOOD_MODEL_PATH, compile=False)
+class TFLiteModel:
+    def __init__(self, model_path: Path):
+        self.interpreter = Interpreter(model_path=str(model_path))
+        self.interpreter.allocate_tensors()
+        self.input_details = self.interpreter.get_input_details()
+        self.output_details = self.interpreter.get_output_details()
+
+    def predict(self, image_tensor: np.ndarray):
+        data = image_tensor.astype(self.input_details[0]['dtype'], copy=False)
+        if data.ndim == len(self.input_details[0]['shape']) - 1:
+            data = np.expand_dims(data, axis=0)
+        self.interpreter.set_tensor(self.input_details[0]['index'], data)
+        self.interpreter.invoke()
+        return [self.interpreter.get_tensor(detail['index']) for detail in self.output_details]
+
+
+age_gender_model = TFLiteModel(AGE_GENDER_MODEL_PATH)
+mood_model = TFLiteModel(MOOD_MODEL_PATH)
 FACE_CASCADE = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
 MOOD_LABELS = {
@@ -55,7 +77,7 @@ def _preprocess_frame(image, size):
     face = cv2.equalizeHist(face)
     face = cv2.resize(face, dsize=size)
     face = face.reshape((face.shape[0], face.shape[1], 1))
-    return face / 255.0
+    return face.astype("float32") / 255.0
 
 
 def _preprocess_image(image_path, size):
@@ -74,14 +96,14 @@ def _preprocess_bytes(payload, size):
 
 
 def _predict_age_gender(image_tensor):
-    age_pred, gender_pred = age_gender_model.predict(np.array([image_tensor]), verbose=0)
+    age_pred, gender_pred = age_gender_model.predict(image_tensor)
     age = _get_age_label(float(age_pred[0][0]))
     gender = _get_gender_label(float(gender_pred[0][0]))
     return age, gender
 
 
 def _predict_mood(image_tensor):
-    result = mood_model.predict(np.array([image_tensor]), verbose=0)[0]
+    result = mood_model.predict(image_tensor)[0][0]
     return MOOD_LABELS.get(int(np.argmax(result)), "Unknown")
 
 
