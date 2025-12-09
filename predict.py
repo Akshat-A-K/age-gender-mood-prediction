@@ -2,10 +2,13 @@ import cv2
 import numpy as np
 from pathlib import Path
 
-try:  # Prefer lightweight runtime in production.
-    from tflite_runtime.interpreter import Interpreter
-except ImportError:  # pragma: no cover - Windows dev fallback.
-    from tensorflow.lite.python.interpreter import Interpreter  # type: ignore
+try:  # Prefer the LiteRT runtime on Linux hosts.
+    from ai_edge_litert.interpreter import Interpreter  # type: ignore
+except ImportError:
+    try:  # Fallback to the legacy tflite-runtime wheel.
+        from tflite_runtime.interpreter import Interpreter  # type: ignore
+    except ImportError:  # pragma: no cover - Windows dev fallback.
+        from tensorflow.lite.python.interpreter import Interpreter  # type: ignore
 
 
 BASE_DIR = Path(__file__).resolve().parent
