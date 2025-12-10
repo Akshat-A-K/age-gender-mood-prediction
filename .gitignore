@@ -23,3 +23,6 @@ models/age_gender.tflite
 # Operating system files
 .DS_Store
 Thumbs.db
+
+Gender-age.h5
+mood.h5
