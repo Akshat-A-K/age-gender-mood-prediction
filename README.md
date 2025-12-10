@@ -19,7 +19,7 @@ The typical workflow is:
 - `capture.py` - webcam capture, Haar face detection, grayscale conversion, histogram equalization, and artifact saving.
 - `predict.py` - loads `Gender-age.h5` plus `mood.h5`, preprocesses an input face image, and prints all three attributes.
 - `app.py` + `templates/` + `static/` - Flask application that exposes a browser UI for uploading face crops, capturing snapshots via webcam, and visualizing predictions.
-- `Gender-age.h5` / `mood.h5` - pre-trained weights required for inference (tracked via Git LFS).
+- `Gender-age.h5` / `mood.h5` - original Keras checkpoints (download separately and place in the project root when you need to regenerate `.tflite` files).
 
 ## Setup
 
@@ -58,7 +58,7 @@ The typical workflow is:
 
 ## Model artifacts
 
-- The repository ships with the original Keras checkpoints (`Gender-age.h5`, `mood.h5`) tracked via Git LFS for reproducibility.
+- The repository ships with only the TensorFlow Lite artifacts so deployment remains lightweight; grab the original Keras checkpoints (`Gender-age.h5`, `mood.h5`) from the release page or your own training run if you plan to regenerate them.
 - At runtime we now load **TensorFlow Lite** versions (`models/age_gender.tflite`, `models/mood.tflite`) through TensorFlow's built-in Lite interpreter (`tensorflow-cpu`). This keeps inference lightweight while remaining compatible across hosts.
 - If you retrain the models, regenerate the TFLite artifacts once using the helper script:
    ```bash

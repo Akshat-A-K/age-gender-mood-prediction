@@ -1,6 +1,6 @@
-"""Utility to convert the training .h5 checkpoints into TensorFlow Lite files.
+"""Convert the training .h5 checkpoints into TensorFlow Lite files.
 
-Run once locally:
+Download/place `Gender-age.h5` and `mood.h5` in the repo root, then run:
     python convert_models.py
 The script drops the converted artifacts into the ./models directory.
 """
