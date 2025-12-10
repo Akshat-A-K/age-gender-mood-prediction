@@ -1,3 +1,4 @@
+import json
 import cv2
 import numpy as np
 import shutil
@@ -18,6 +19,19 @@ BASE_DIR = Path(__file__).resolve().parent
 MODELS_DIR = BASE_DIR / 'models'
 AGE_GENDER_MODEL_PATH = MODELS_DIR / 'age_gender.tflite'
 MOOD_MODEL_PATH = MODELS_DIR / 'mood.tflite'
+AGE_GENDER_SIGNATURE_PATH = MODELS_DIR / 'age_gender.signature.json'
+
+
+def _load_output_signature(signature_path: Path, aliases: tuple[str, ...]):
+    if not signature_path.exists() or not aliases:
+        return None
+    try:
+        mapping = json.loads(signature_path.read_text())
+    except json.JSONDecodeError:
+        return None
+    if not all(alias in mapping for alias in aliases):
+        return None
+    return mapping
 
 
 def _assemble_chunked_model(target: Path, chunk_dir: Path, prefix: str) -> None:
@@ -48,11 +62,15 @@ _assemble_chunked_model(
 
 
 class TFLiteModel:
-    def __init__(self, model_path: Path):
+    def __init__(self, model_path: Path, output_aliases: tuple[str, ...] | None = None, signature_path: Path | None = None):
         self.interpreter = Interpreter(model_path=str(model_path))
         self.interpreter.allocate_tensors()
         self.input_details = self.interpreter.get_input_details()
         self.output_details = self.interpreter.get_output_details()
+        self.output_aliases = output_aliases or tuple()
+        self.output_signature = None
+        if signature_path is not None:
+            self.output_signature = _load_output_signature(signature_path, self.output_aliases)
 
     def predict(self, image_tensor: np.ndarray):
         data = image_tensor.astype(self.input_details[0]['dtype'], copy=False)
@@ -60,10 +78,20 @@ class TFLiteModel:
             data = np.expand_dims(data, axis=0)
         self.interpreter.set_tensor(self.input_details[0]['index'], data)
         self.interpreter.invoke()
-        return [self.interpreter.get_tensor(detail['index']) for detail in self.output_details]
+        outputs = {detail['name']: self.interpreter.get_tensor(detail['index']) for detail in self.output_details}
+        if self.output_signature and self.output_aliases:
+            try:
+                return [outputs[self.output_signature[alias]] for alias in self.output_aliases]
+            except KeyError:
+                pass
+        return list(outputs.values())
 
 
-age_gender_model = TFLiteModel(AGE_GENDER_MODEL_PATH)
+age_gender_model = TFLiteModel(
+    AGE_GENDER_MODEL_PATH,
+    output_aliases=("age", "gender"),
+    signature_path=AGE_GENDER_SIGNATURE_PATH,
+)
 mood_model = TFLiteModel(MOOD_MODEL_PATH)
 FACE_CASCADE = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 

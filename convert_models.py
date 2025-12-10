@@ -9,8 +9,11 @@ Large artifacts (>50 MiB) are automatically chunked into
 The plain `.tflite` files are rebuilt automatically at runtime when needed.
 """
 
+import json
 from pathlib import Path
+from typing import Dict, List
 
+import numpy as np
 import tensorflow as tf
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -27,6 +30,9 @@ CHECKPOINTS = [
     ),
 ]
 CHUNK_SIZE = 50 * 1024 * 1024  # 50 MiB to stay below GitHub's file limit
+OUTPUT_ALIASES: Dict[str, List[str]] = {
+    "age_gender.tflite": ["age", "gender"],
+}
 
 
 def convert_model(source: Path, target: Path, optimize: bool) -> None:
@@ -40,8 +46,50 @@ def convert_model(source: Path, target: Path, optimize: bool) -> None:
         converter.optimizations = [tf.lite.Optimize.DEFAULT]
     tflite_model = converter.convert()
     target.write_bytes(tflite_model)
+    _write_output_signature(model, tflite_model, target)
     print(f"Saved {target.relative_to(BASE_DIR)} ({len(tflite_model) / 1024:.1f} KiB)")
     _chunk_large_artifact(target)
+
+
+def _write_output_signature(model, tflite_blob: bytes, artifact: Path) -> None:
+    aliases = OUTPUT_ALIASES.get(artifact.name)
+    if not aliases or len(model.outputs) != len(aliases):
+        return
+
+    interpreter = tf.lite.Interpreter(model_content=tflite_blob)
+    interpreter.allocate_tensors()
+    input_detail = interpreter.get_input_details()[0]
+
+    shape = [dim if dim is not None else 1 for dim in input_detail["shape"]]
+    sample = np.random.rand(*shape).astype(input_detail["dtype"])  # deterministic enough for mapping
+
+    keras_outputs = model.predict(sample, verbose=0)
+    if not isinstance(keras_outputs, (list, tuple)):
+        keras_outputs = [keras_outputs]
+
+    interpreter.set_tensor(input_detail["index"], sample)
+    interpreter.invoke()
+    tflite_details = interpreter.get_output_details()
+    tflite_outputs = [interpreter.get_tensor(detail["index"]) for detail in tflite_details]
+
+    remaining = set(range(len(tflite_outputs)))
+    mapping = {}
+    for alias, keras_out in zip(aliases, keras_outputs):
+        best_idx = None
+        best_score = float("inf")
+        for idx in remaining:
+            score = float(np.max(np.abs(tflite_outputs[idx] - keras_out)))
+            if score < best_score:
+                best_score = score
+                best_idx = idx
+        if best_idx is None:
+            continue
+        remaining.remove(best_idx)
+        mapping[alias] = tflite_details[best_idx]["name"]
+
+    if len(mapping) == len(aliases):
+        signature_path = artifact.with_suffix(".signature.json")
+        signature_path.write_text(json.dumps(mapping, indent=2))
 
 
 def _chunk_large_artifact(artifact: Path) -> None:
