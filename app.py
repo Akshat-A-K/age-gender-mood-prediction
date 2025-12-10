@@ -171,6 +171,13 @@ def clear_session():
     flash("Session data cleared and uploads removed.")
     return redirect(url_for("index"))
 
+@app.route("/healthz")
+def healthz():
+    # force a single warm-up invocation; run only once
+    if not getattr(app, "_warmed_up", False):
+        predict.get_age_gender_mood_from_bytes(open("static/placeholder.jpg", "rb").read())
+        app._warmed_up = True
+    return "ok", 200
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
