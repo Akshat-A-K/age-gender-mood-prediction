@@ -15,20 +15,29 @@ import tensorflow as tf
 
 BASE_DIR = Path(__file__).resolve().parent
 CHECKPOINTS = [
-    (BASE_DIR / "Gender-age.h5", BASE_DIR / "models" / "age_gender.tflite"),
-    (BASE_DIR / "mood.h5", BASE_DIR / "models" / "mood.tflite"),
+    (
+        BASE_DIR / "Gender-age.h5",
+        BASE_DIR / "models" / "age_gender.tflite",
+        False,  # keep float32 outputs identical to the original deployment
+    ),
+    (
+        BASE_DIR / "mood.h5",
+        BASE_DIR / "models" / "mood.tflite",
+        True,
+    ),
 ]
 CHUNK_SIZE = 50 * 1024 * 1024  # 50 MiB to stay below GitHub's file limit
 
 
-def convert_model(source: Path, target: Path) -> None:
+def convert_model(source: Path, target: Path, optimize: bool) -> None:
     if not source.exists():
         raise FileNotFoundError(f"Missing checkpoint: {source}")
 
     target.parent.mkdir(parents=True, exist_ok=True)
     model = tf.keras.models.load_model(source, compile=False)
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    if optimize:
+        converter.optimizations = [tf.lite.Optimize.DEFAULT]
     tflite_model = converter.convert()
     target.write_bytes(tflite_model)
     print(f"Saved {target.relative_to(BASE_DIR)} ({len(tflite_model) / 1024:.1f} KiB)")
@@ -64,8 +73,8 @@ def _chunk_large_artifact(artifact: Path) -> None:
 
 
 def main() -> None:
-    for checkpoint, artifact in CHECKPOINTS:
-        convert_model(checkpoint, artifact)
+    for checkpoint, artifact, optimize in CHECKPOINTS:
+        convert_model(checkpoint, artifact, optimize)
 
 
 if __name__ == "__main__":

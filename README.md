@@ -65,13 +65,14 @@ The typical workflow is:
    ```bash
    python convert_models.py
    ```
-   The script writes optimized `.tflite` files into `./models/` so the web app can consume them.
+   The script writes `.tflite` files into `./models/` so the web app can consume them. The age/gender export deliberately skips post-training quantization to keep its float32 output distribution identical to the previously deployed model. If you need a smaller file, provide a representative dataset and enable quantization manually.
    Artifacts larger than 50 MiB are chunked automatically into `models/chunks/<name>/` to keep Git-friendly file sizes; `predict.py` rebuilds the `.tflite` file from those pieces when needed.
 
 ## Deployment notes
 
 - Free hosts such as Render require HTTPS for webcam access. Set the Python version to **3.10** (the repo includes `runtime.txt`) so prebuilt `tensorflow-cpu` wheels are available.
 - Both Linux hosts (Render) and Windows development environments install `tensorflow-cpu==2.20.0`, which exposes the same TF Lite interpreter used for inference and model conversion. No Git LFS traffic is required because the age/gender weights are shipped as regular Git blobs split into 50 MiB parts.
+- `Procfile` launches Gunicorn with `--workers=2 --timeout=120`, which mirrors setting `WEB_CONCURRENCY=2` on Render so a second worker can serve requests while another performs long-running inference. Adjust those flags if your host provides more/less RAM.
 
 ## Datasets
 
