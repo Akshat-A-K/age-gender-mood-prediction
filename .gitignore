@@ -17,6 +17,9 @@ resized_face.jpg
 enhanced_resized_face.jpg
 uploads/
 
+# Model binaries assembled at runtime
+models/*.tflite
+
 # Operating system files
 .DS_Store
 Thumbs.db

@@ -20,6 +20,7 @@ The typical workflow is:
 - `predict.py` - loads `Gender-age.h5` plus `mood.h5`, preprocesses an input face image, and prints all three attributes.
 - `app.py` + `templates/` + `static/` - Flask application that exposes a browser UI for uploading face crops, capturing snapshots via webcam, and visualizing predictions.
 - `Gender-age.h5` / `mood.h5` - original Keras checkpoints (download separately and place in the project root when you need to regenerate `.tflite` files).
+- `models/chunks/age_gender/age_gender.partXX` - chunked TensorFlow Lite weights for age/gender inference. These ship with the repo and are reassembled automatically at runtime.
 
 ## Setup
 
@@ -58,18 +59,19 @@ The typical workflow is:
 
 ## Model artifacts
 
-- The repository ships with only the TensorFlow Lite artifacts so deployment remains lightweight; grab the original Keras checkpoints (`Gender-age.h5`, `mood.h5`) from the release page or your own training run if you plan to regenerate them.
+- The repository ships with the TensorFlow Lite artifacts only: the smaller mood model is checked in directly, while the age/gender model is stored as chunk files under `models/chunks/age_gender/`. The `.tflite` file is reconstructed on first run, so no Git LFS bandwidth is needed during deployment.
 - At runtime we now load **TensorFlow Lite** versions (`models/age_gender.tflite`, `models/mood.tflite`) through TensorFlow's built-in Lite interpreter (`tensorflow-cpu`). This keeps inference lightweight while remaining compatible across hosts.
 - If you retrain the models, regenerate the TFLite artifacts once using the helper script:
    ```bash
    python convert_models.py
    ```
    The script writes optimized `.tflite` files into `./models/` so the web app can consume them.
+   Artifacts larger than 50 MiB are chunked automatically into `models/chunks/<name>/` to keep Git-friendly file sizes; `predict.py` rebuilds the `.tflite` file from those pieces when needed.
 
 ## Deployment notes
 
 - Free hosts such as Render require HTTPS for webcam access. Set the Python version to **3.10** (the repo includes `runtime.txt`) so prebuilt `tensorflow-cpu` wheels are available.
-- Both Linux hosts (Render) and Windows development environments install `tensorflow-cpu==2.20.0`, which exposes the same TF Lite interpreter used for inference and model conversion.
+- Both Linux hosts (Render) and Windows development environments install `tensorflow-cpu==2.20.0`, which exposes the same TF Lite interpreter used for inference and model conversion. No Git LFS traffic is required because the age/gender weights are shipped as regular Git blobs split into 50 MiB parts.
 
 ## Datasets
 

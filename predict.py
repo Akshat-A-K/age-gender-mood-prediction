@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import shutil
 from pathlib import Path
 
 try:  # Use TensorFlow's bundled Lite interpreter when available.
@@ -14,8 +15,36 @@ except ImportError:  # pragma: no cover - fallback when tensorflow isn't install
 
 
 BASE_DIR = Path(__file__).resolve().parent
-AGE_GENDER_MODEL_PATH = BASE_DIR / 'models' / 'age_gender.tflite'
-MOOD_MODEL_PATH = BASE_DIR / 'models' / 'mood.tflite'
+MODELS_DIR = BASE_DIR / 'models'
+AGE_GENDER_MODEL_PATH = MODELS_DIR / 'age_gender.tflite'
+MOOD_MODEL_PATH = MODELS_DIR / 'mood.tflite'
+
+
+def _assemble_chunked_model(target: Path, chunk_dir: Path, prefix: str) -> None:
+    """Rebuild a model file from chunked parts if needed."""
+
+    if target.exists():
+        return
+
+    if not chunk_dir.exists():
+        return
+
+    parts = sorted(chunk_dir.glob(f"{prefix}.part*"))
+    if not parts:
+        return
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open('wb') as dest:
+        for part in parts:
+            with part.open('rb') as src:
+                shutil.copyfileobj(src, dest)
+
+
+_assemble_chunked_model(
+    AGE_GENDER_MODEL_PATH,
+    MODELS_DIR / 'chunks' / 'age_gender',
+    'age_gender',
+)
 
 
 class TFLiteModel:
